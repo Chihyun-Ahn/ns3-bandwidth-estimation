@@ -1,0 +1,14 @@
+Waf: Entering directory `/home/ach/source/ns-3.26/build'
+[821/866] Compiling HAS.cc
+[822/866] Compiling subdir/scratch-simulator-subdir.cc
+../scratch/HAS.cc: In member function ‘void DashClientApp::SendRequest()’:
+../scratch/HAS.cc:475:21: error: ‘currentBitrate’ was not declared in this scope
+     m_prevBitrate = currentBitrate = m_nextBitrate;
+
+                     ^
+
+Waf: Leaving directory `/home/ach/source/ns-3.26/build'
+Build failed
+ -> task in 'HAS' failed (exit status 1): 
+	{task 139747082096720: cxx HAS.cc -> HAS.cc.5.o}
+['/usr/bin/g++', '-O0', '-ggdb', '-g3', '-Wall', '-Werror', '-std=c++11', '-Wno-error=deprecated-declarations', '-fstrict-aliasing', '-Wstrict-aliasing', '-pthread', '-pthread', '-I.', '-I..', '-I/usr/include/gtk-2.0', '-I/usr/lib/x86_64-linux-gnu/gtk-2.0/include', '-I/usr/include/gio-unix-2.0', '-I/usr/include/cairo', '-I/usr/include/pango-1.0', '-I/usr/include/atk-1.0', '-I/usr/include/pixman-1', '-I/usr/include/libpng12', '-I/usr/include/gdk-pixbuf-2.0', '-I/usr/include/harfbuzz', '-I/usr/include/glib-2.0', '-I/usr/lib/x86_64-linux-gnu/glib-2.0/include', '-I/usr/include/freetype2', '-I/usr/include/libxml2', '-DNS3_BUILD_PROFILE_DEBUG', '-DNS3_ASSERT_ENABLE', '-DNS3_LOG_ENABLE', '-DHAVE_SYS_IOCTL_H=1', '-DHAVE_IF_NETS_H=1', '-DHAVE_NET_ETHERNET_H=1', '-DHAVE_PACKET_H=1', '-DHAVE_IF_TUN_H=1', '-DHAVE_GSL=1', '-DHAVE_SQLITE3=1', '-DHAVE_GTK2=1', '-DHAVE_LIBXML2=1', '../scratch/HAS.cc', '-c', '-o', '/home/ach/source/ns-3.26/build/scratch/HAS.cc.5.o']
