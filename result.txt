@@ -1,14 +1,52 @@
 Waf: Entering directory `/home/ach/source/ns-3.26/build'
-[821/866] Compiling HAS.cc
-[822/866] Compiling subdir/scratch-simulator-subdir.cc
-../scratch/HAS.cc: In member function ‘void DashClientApp::SendRequest()’:
-../scratch/HAS.cc:475:21: error: ‘currentBitrate’ was not declared in this scope
-     m_prevBitrate = currentBitrate = m_nextBitrate;
-
-                     ^
-
+[822/868] Compiling HAS.cc
+[866/868] Linking ../build/scratch/HAS
 Waf: Leaving directory `/home/ach/source/ns-3.26/build'
-Build failed
- -> task in 'HAS' failed (exit status 1): 
-	{task 139747082096720: cxx HAS.cc -> HAS.cc.5.o}
-['/usr/bin/g++', '-O0', '-ggdb', '-g3', '-Wall', '-Werror', '-std=c++11', '-Wno-error=deprecated-declarations', '-fstrict-aliasing', '-Wstrict-aliasing', '-pthread', '-pthread', '-I.', '-I..', '-I/usr/include/gtk-2.0', '-I/usr/lib/x86_64-linux-gnu/gtk-2.0/include', '-I/usr/include/gio-unix-2.0', '-I/usr/include/cairo', '-I/usr/include/pango-1.0', '-I/usr/include/atk-1.0', '-I/usr/include/pixman-1', '-I/usr/include/libpng12', '-I/usr/include/gdk-pixbuf-2.0', '-I/usr/include/harfbuzz', '-I/usr/include/glib-2.0', '-I/usr/lib/x86_64-linux-gnu/glib-2.0/include', '-I/usr/include/freetype2', '-I/usr/include/libxml2', '-DNS3_BUILD_PROFILE_DEBUG', '-DNS3_ASSERT_ENABLE', '-DNS3_LOG_ENABLE', '-DHAVE_SYS_IOCTL_H=1', '-DHAVE_IF_NETS_H=1', '-DHAVE_NET_ETHERNET_H=1', '-DHAVE_PACKET_H=1', '-DHAVE_IF_TUN_H=1', '-DHAVE_GSL=1', '-DHAVE_SQLITE3=1', '-DHAVE_GTK2=1', '-DHAVE_LIBXML2=1', '../scratch/HAS.cc', '-c', '-o', '/home/ach/source/ns-3.26/build/scratch/HAS.cc.5.o']
+Build commands will be stored in build/compile_commands.json
+'build' finished successfully (9.631s)
+Input the adaptation algorithm : Server: connection callback 
+Server: accept callback 
+=======START=========== 0x1acad90 =================
+Time: 610 bpsAverage: 0 bpsLastChunk: 2745 nextBitrate: 700000 chunkCount: 1 totalChunks: 512 downloadDuration: 510
+=======START=========== 0x1acad90 =================
+Time: 943 bpsAverage: 0 bpsLastChunk: 4204 nextBitrate: 700000 chunkCount: 2 totalChunks: 512 downloadDuration: 333
+=======BUFFER========== 0x1acad90 =================
+Time: 1100 bufferSize: 3 hasThroughput: 600 estimatedBW: 4204.2 videoLevel: 700
+=======START=========== 0x1acad90 =================
+Time: 1275 bpsAverage: 0 bpsLastChunk: 4216 nextBitrate: 1400000 chunkCount: 3 totalChunks: 512 downloadDuration: 332
+Number of Quality Switching : 1
+=======START=========== 0x1acad90 =================
+Time: 1918 bpsAverage: 0 bpsLastChunk: 4354 nextBitrate: 1400000 chunkCount: 4 totalChunks: 512 downloadDuration: 643
+=======BUFFER========== 0x1acad90 =================
+Time: 2100 bufferSize: 6 hasThroughput: 711 estimatedBW: 4354.59 videoLevel: 1400
+=======START=========== 0x1acad90 =================
+Time: 2560 bpsAverage: 0 bpsLastChunk: 4361 nextBitrate: 1400000 chunkCount: 5 totalChunks: 512 downloadDuration: 642
+=======BUFFER========== 0x1acad90 =================
+Time: 3100 bufferSize: 7 hasThroughput: 2330 estimatedBW: 4361.37 videoLevel: 1400
+=======START=========== 0x1acad90 =================
+Time: 3202 bpsAverage: 0 bpsLastChunk: 4361 nextBitrate: 1400000 chunkCount: 6 totalChunks: 512 downloadDuration: 642
+=======START=========== 0x1acad90 =================
+Time: 3845 bpsAverage: 0 bpsLastChunk: 4354 nextBitrate: 2100000 chunkCount: 7 totalChunks: 512 downloadDuration: 643
+Number of Quality Switching : 2
+=======BUFFER========== 0x1acad90 =================
+Time: 4100 bufferSize: 10 hasThroughput: 1046 estimatedBW: 4354.59 videoLevel: 2100
+=======START=========== 0x1acad90 =================
+Time: 4797 bpsAverage: 0 bpsLastChunk: 4411 nextBitrate: 2100000 chunkCount: 8 totalChunks: 512 downloadDuration: 952
+=======BUFFER========== 0x1acad90 =================
+Time: 5100 bufferSize: 11 hasThroughput: 1261 estimatedBW: 4411.76 videoLevel: 2100
+=======START=========== 0x1acad90 =================
+Time: 5748 bpsAverage: 0 bpsLastChunk: 4416 nextBitrate: 2100000 chunkCount: 9 totalChunks: 512 downloadDuration: 951
+=======BUFFER========== 0x1acad90 =================
+Time: 6100 bufferSize: 12 hasThroughput: 1478 estimatedBW: 4416.4 videoLevel: 2100
+=======START=========== 0x1acad90 =================
+Time: 6700 bpsAverage: 0 bpsLastChunk: 4411 nextBitrate: 2100000 chunkCount: 10 totalChunks: 512 downloadDuration: 952
+=======BUFFER========== 0x1acad90 =================
+Time: 7100 bufferSize: 13 hasThroughput: 1699 estimatedBW: 4411.76 videoLevel: 2100
+=======START=========== 0x1acad90 =================
+Time: 7652 bpsAverage: 0 bpsLastChunk: 4411 nextBitrate: 2800000 chunkCount: 11 totalChunks: 512 downloadDuration: 952
+Number of Quality Switching : 3
+=======BUFFER========== 0x1acad90 =================
+Time: 8100 bufferSize: 14 hasThroughput: 1917 estimatedBW: 4411.76 videoLevel: 2800
+=======START=========== 0x1acad90 =================
+Time: 8914 bpsAverage: 0 bpsLastChunk: 4437 nextBitrate: 2800000 chunkCount: 12 totalChunks: 512 downloadDuration: 1262
+Animation Trace file created:dash-animation.xml
