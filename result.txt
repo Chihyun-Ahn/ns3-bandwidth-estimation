@@ -1,32 +1,7 @@
 Waf: Entering directory `/home/ach/source/ns-3.26/build'
-[823/868] Compiling HAS.cc
-[865/868] Linking ../build/scratch/HAS
+[824/870] Compiling topp.cc
+[863/870] Linking ../build/scratch/topp
 Waf: Leaving directory `/home/ach/source/ns-3.26/build'
 Build commands will be stored in build/compile_commands.json
-'build' finished successfully (11.976s)
-Input the adaptation algorithm : Server: connection callback 
-Server: accept callback 
-**: 505
-=======START=========== 0xb63d90 =================
-Time: 505 bpsAverage: 0 bpsLastChunk: 3456 nextBitrate: 7200 chunkCount: 1 totalChunks: 512 downloadDuration: 405
-=======BUFFER========== 0xb63d90 =================
-Time: 1100 bufferSize: 1 hasThroughput: 0 estimatedBW: 3456.79 videoLevel: 700
-=======BUFFER========== 0xb63d90 =================
-Time: 2100 bufferSize: 0 hasThroughput: 0 estimatedBW: 3456.79 videoLevel: 700
-=======BUFFER========== 0xb63d90 =================
-Time: 3100 bufferSize: 0 hasThroughput: 0 estimatedBW: 3456.79 videoLevel: 700
-=======BUFFER========== 0xb63d90 =================
-Time: 4100 bufferSize: 0 hasThroughput: 0 estimatedBW: 3456.79 videoLevel: 700
-Number of Quality Switching : 1
-**: 4025
-=======START=========== 0xb63d90 =================
-Time: 4530 bpsAverage: 0 bpsLastChunk: 576 nextBitrate: 7200 chunkCount: 1 totalChunks: 512 downloadDuration: 25
-=======BUFFER========== 0xb63d90 =================
-Time: 5100 bufferSize: 1 hasThroughput: 0 estimatedBW: 576 videoLevel: 7
-=======BUFFER========== 0xb63d90 =================
-Time: 6100 bufferSize: 0 hasThroughput: 0 estimatedBW: 576 videoLevel: 7
-=======BUFFER========== 0xb63d90 =================
-Time: 7100 bufferSize: 0 hasThroughput: 0 estimatedBW: 576 videoLevel: 7
-=======BUFFER========== 0xb63d90 =================
-Time: 8100 bufferSize: 0 hasThroughput: 0 estimatedBW: 576 videoLevel: 7
-Animation Trace file created:dash-animation.xml
+'build' finished successfully (37.276s)
+Input the adaptation algorithm : 

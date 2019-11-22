@@ -46,21 +46,25 @@ private:
     EventId m_sendEvent;
     uint32_t m_packetSize;
     uint32_t m_packetCount;
-    vector<uint32_t> m_bitrate_array;
-    vector<uint32_t> m_sendTime_array;
+
+    int64x64_t m_dstIntervalSum;
+    // vector<uint32_t> m_bitrate_array;
+    // vector<uint32_t> m_sendTime_array;
+    Time m_firstPcktRcvTime;
     Time m_receiveTime;
 
     uint32_t m_receive_packet;
     uint32_t m_receive_rate;
-
-
-
+    uint32_t m_trainSize;
 };
 // 생성자. 초기값 설정
 DashServerApp::DashServerApp() :
     m_connected(false), m_socket(0), m_peer_socket(0), 
     ads(), m_peer_address(), m_remainingData(0), 
-    m_sendEvent(), m_packetSize(0), m_packetCount(0), m_receiveTime(), m_receive_packet(0), m_receive_rate(0)
+    m_sendEvent(), m_packetSize(0), m_packetCount(0), 
+    m_dstIntervalSum(0), m_firstPcktRcvTime(0),
+    m_receiveTime(0), m_receive_packet(0),
+    m_receive_rate(0),m_trainSize(256)
 {
 
 }
@@ -76,39 +80,8 @@ DashServerApp::~DashServerApp()
 void DashServerApp::Setup(Address address, uint32_t packetSize)
 {
     ads = address;
+    m_packetSize = 0;
     m_packetSize = packetSize;
-
-    //bitrate profile of the content
-    // m_bitrate_array.push_back(50);
-    // m_bitrate_array.push_back(100);
-    // m_bitrate_array.push_back(150);
-    // m_bitrate_array.push_back(200);
-    // m_bitrate_array.push_back(250);
-    // m_bitrate_array.push_back(300);
-    // m_bitrate_array.push_back(350);
-    // m_bitrate_array.push_back(400);
-    // m_bitrate_array.push_back(450);
-    // m_bitrate_array.push_back(500);
-
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-
-
-
-    //probing packet sending timing
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
 }
 // 서버를 시작하는 메소드
 void DashServerApp::StartApplication()
@@ -148,22 +121,19 @@ void DashServerApp::RxCallback(Ptr<Socket> socket)
 
     //설정은 한 다음에, 시뮬레이터 동작시 실시간 설정 부분. 
     Time cTime = Simulator::Now();
-    NS_LOG_UNCOND("Time: " << Simulator::Now().GetMicroSeconds() << " Received Data" << data);
-    if(m_receiveTime != 0){
-        //갭을 계산해서, TOPP에 따라서 대역폭을 계산했다. 
-        uint32_t gap = cTime.GetMicroSeconds() - m_receiveTime.GetMicroSeconds();
-        uint32_t bandwidth = (data*8)*(m_sendTime_array[m_receive_packet]/gap);
-        NS_LOG_UNCOND("Time: " << Simulator::Now().GetMicroSeconds() <<
-                      " Bandwidth: " << bandwidth <<
-                      " Gap: " << gap <<
-                      " DataRate: " << data*8);
+    if(m_packetCount < m_trainSize){
+        m_packetCount ++;
+        if(m_packetCount == 1){m_firstPcktRcvTime = cTime;}
+        int64x64_t dstGap = cTime.GetMicroSeconds() - m_receiveTime.GetMicroSeconds();
         m_receiveTime = cTime;
-        m_receive_packet++;
-        if(m_receive_packet >= m_sendTime_array.size()){
-            m_receive_packet = 0;
-        }
+        m_dstIntervalSum += dstGap;
+        NS_LOG_UNCOND("Time: " << cTime.GetMicroSeconds() << 
+            " Received Data: " << data << " dstGap: " << dstGap << 
+            " trainCount: " << m_packetCount);
+    }else{
+        m_dstIntervalSum = m_dstIntervalSum - m_firstPcktRcvTime.GetMicroSeconds();
+        NS_LOG_UNCOND("Time: " << cTime << "dstIntervalSum: " << m_dstIntervalSum);
     }
-
 }
 
 // 서버에서 패킷을 보낼 때 콜백함수
@@ -204,21 +174,30 @@ private:
 
     Ptr<Socket> m_socket;
     Address m_peer;
-    vector<uint32_t> m_bitrate_array;
-    vector<uint32_t> m_sendTime_array;
+    // vector<uint32_t> m_bitrate_array;
+    // vector<uint32_t> m_sendTime_array;
     bool m_running;
 
     // Proposed
     uint32_t num_Send_Packet;
     uint32_t m_packet_rate;
-    uint32_t m_next_rate;
+    uint32_t m_next_size;
 
+    uint32_t m_packetSize;
+    uint32_t m_interval;
+    uint32_t m_trainSize;
+    uint32_t trainCount;
+    uint32_t m_firstPcktSent;
+    uint32_t m_prevPcktTime;
+    uint32_t m_srcIntervalSum;
 };
 
 // 생성자. 초기값 설정. 
 DashClientApp::DashClientApp() :
     m_socket(0), m_peer(), m_running(false),
-    num_Send_Packet(0), m_packet_rate(0), m_next_rate(0)
+    num_Send_Packet(0), m_packet_rate(0), m_next_size(750),
+    m_trainSize(256),trainCount(0), m_firstPcktSent(0),
+    m_prevPcktTime(0), m_srcIntervalSum(0)
 {
 
 }
@@ -234,42 +213,8 @@ void DashClientApp::Setup(Address address)
 {
     m_peer = address;
 
-    //bitrate profile of the content
-    // m_bitrate_array.push_back(50);
-    // m_bitrate_array.push_back(100);
-    // m_bitrate_array.push_back(150);
-    // m_bitrate_array.push_back(200);
-    // m_bitrate_array.push_back(250);
-    // m_bitrate_array.push_back(300);
-    // m_bitrate_array.push_back(350);
-    // m_bitrate_array.push_back(400);
-    // m_bitrate_array.push_back(450);
-    // m_bitrate_array.push_back(500);
-
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-    m_bitrate_array.push_back(100);
-
-
-    //프로브 패킷 보내는 시간 간격 (단위: ms)
-    // m_sendTime_array.push_back(5);
-    // m_sendTime_array.push_back(4);
-    // m_sendTime_array.push_back(3);
-    // m_sendTime_array.push_back(2);
-    // m_sendTime_array.push_back(1);
-
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
-    m_sendTime_array.push_back(1000);
+    m_packetSize = 750;
+    m_interval = 500;
 }
 
 // 앱을 시작. 
@@ -295,20 +240,14 @@ void DashClientApp::RequestNextChunk(void)
 // 제안할 메소드. 클라이언트앱 시작시 실행
 void DashClientApp::Proposed(void)
 {
-    // 다음 보낼 rate값 이동 저장. m_bitrate_array[m_packet_rate]
-    m_next_rate = m_bitrate_array[m_packet_rate];
+    // 다음 보낼 패킷 사이즈 지정
+    m_next_size = 750;
 
     // Time scheduling
-    Time tNext(MicroSeconds(m_sendTime_array[num_Send_Packet++]));
+    Time tNext(MicroSeconds(m_interval));
     ///////
     NS_LOG_UNCOND("tNext: " << tNext);
-    if(num_Send_Packet >= m_sendTime_array.size()){
-        num_Send_Packet = 0;
-        m_packet_rate++;
-        if(m_packet_rate >= m_bitrate_array.size()){
-            m_packet_rate = 0;
-        }
-    }
+ 
     Simulator::Schedule(tNext, &DashClientApp::SendRequest, this);
 }
 
@@ -316,13 +255,26 @@ void DashClientApp::Proposed(void)
 void DashClientApp::SendRequest(void)
 {
     // 패킷 사이즈가 m_next_rate인 패킷을 만들어서 보낸다... 로 이해하자 일단
-    uint32_t bytesReq = m_next_rate;
+    uint32_t bytesReq = m_packetSize;
     Ptr<Packet> packet = Create<Packet>((uint8_t *) &bytesReq, 4);
-
-    m_socket->Send(packet);
-    NS_LOG_UNCOND("Time : "<< Simulator::Now().GetMicroSeconds() << " Send Packet Size : " << m_next_rate);
-
-    Simulator::ScheduleNow(&DashClientApp::RequestNextChunk, this);
+    trainCount++;
+    if(trainCount <= m_trainSize){
+        m_socket->Send(packet);
+        Time cTime = Simulator::Now();
+        if(trainCount == 1){
+            m_firstPcktSent = cTime.GetMicroSeconds();
+        }
+        int64x64_t srcGap = cTime.GetMicroSeconds() - m_prevPcktTime;
+        m_prevPcktTime = cTime.GetMicroSeconds();
+        m_srcIntervalSum += cTime.GetMicroSeconds();
+        NS_LOG_UNCOND("Time : "<< cTime << " Send Packet Size : " 
+            << m_next_size << " trainCount: " << trainCount << " srcGap:"<< srcGap);
+        Simulator::ScheduleNow(&DashClientApp::RequestNextChunk, this);
+    }else{
+        m_srcIntervalSum = m_srcIntervalSum - m_prevPcktTime;
+        NS_LOG_UNCOND("source gap total : "<< m_srcIntervalSum );
+        StopApplication();
+    }
 }
 
 // 클라이언트앱 스톱. 볼 필요 없음. 
@@ -348,13 +300,13 @@ int main(int argc, char *argv[])
     LogComponentEnable("DashApplication", LOG_LEVEL_ALL);
 
     PointToPointHelper bottleNeck;
-    bottleNeck.SetDeviceAttribute("DataRate", StringValue("1Mbps"));
-    bottleNeck.SetChannelAttribute("Delay", StringValue("100ms"));
+    bottleNeck.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
+    bottleNeck.SetChannelAttribute("Delay", StringValue("10ms"));
     bottleNeck.SetQueue("ns3::DropTailQueue", "Mode", StringValue ("QUEUE_MODE_BYTES"));
 
     PointToPointHelper pointToPointLeaf;
     pointToPointLeaf.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
-    pointToPointLeaf.SetChannelAttribute("Delay", StringValue("1ms"));
+    pointToPointLeaf.SetChannelAttribute("Delay", StringValue("10ms"));
 
     PointToPointDumbbellHelper dB(2, pointToPointLeaf, 2, pointToPointLeaf,
                                   bottleNeck);
@@ -377,9 +329,9 @@ int main(int argc, char *argv[])
 
     OnOffHelper crossTrafficSrc1("ns3::UdpSocketFactory", dstAddress);
     crossTrafficSrc1.SetAttribute("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=2.0]"));
-    crossTrafficSrc1.SetAttribute("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.001]"));
-    crossTrafficSrc1.SetAttribute("DataRate", DataRateValue (DataRate("6Mb/s")));
-    crossTrafficSrc1.SetAttribute("PacketSize", UintegerValue (512));
+    crossTrafficSrc1.SetAttribute("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.000001]"));
+    crossTrafficSrc1.SetAttribute("DataRate", DataRateValue (DataRate("3.6Mb/s")));
+    crossTrafficSrc1.SetAttribute("PacketSize", UintegerValue (750));
     ApplicationContainer srcApp1 = crossTrafficSrc1.Install(dB.GetRight(0));
 
     ApplicationContainer dstApp1;
@@ -392,7 +344,7 @@ int main(int argc, char *argv[])
     // DASH server
     Address bindAddress1(InetSocketAddress(Ipv4Address::GetAny(), serverPort));
     Ptr<DashServerApp> serverApp1 = CreateObject<DashServerApp>();
-    serverApp1->Setup(bindAddress1, 512);
+    serverApp1->Setup(bindAddress1, 6000);
     dB.GetLeft(1)->AddApplication(serverApp1);
     serverApp1->SetStartTime(Seconds(0.0));
     serverApp1->SetStopTime(Seconds(5.0));
