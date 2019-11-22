@@ -235,6 +235,9 @@ private:
     uint32_t m_numOfSwitching;
 
     // Proposed
+    uint32_t m_probeTerm;
+    uint32_t m_curRxProbe;
+    uint32_t m_preRxProbe;
 
 };
 
@@ -244,7 +247,10 @@ DashClientApp::DashClientApp() :
     m_fetchEvent(), m_statisticsEvent(), m_running(false),
     m_comulativeSize(0), m_lastRequestedSize(0), m_requestTime(), m_sessionData(0), m_sessionTime(0),
     m_bufferEvent(), m_bufferStateEvent(), m_downloadDuration(0), m_throughput(0.0), 
-    m_prevBitrate(0), m_nextBitrate(0), m_algorithm(0), m_numOfSwitching(0)
+    m_prevBitrate(0), m_nextBitrate(0), m_algorithm(0), m_numOfSwitching(0),
+
+    //Proposed
+    m_probeTerm(0), m_curRxProbe(0), m_preRxProbe(0)
 {
 
 }
@@ -260,6 +266,8 @@ void DashClientApp::Setup(Address address, uint32_t chunkSize,
     m_peer = address;
     m_chunkSize = chunkSize;
     m_numChunks = numChunks;
+    m_probeTerm = 1;
+
 
     //bitrate profile of the content
     m_bitrate_array.push_back(700000);
@@ -327,6 +335,11 @@ void DashClientApp::RxCallback(Ptr<Socket> socket)
             // Estimating
             m_downloadDuration = Simulator::Now().GetMilliSeconds() - m_requestTime.GetMilliSeconds();
             m_bpsLastChunk = (m_comulativeSize * 8) / (m_downloadDuration / 1000.0);
+
+            // Proposed
+            m_curRxProbe = Simulator::Now().GetMilliSeconds();
+            NS_LOG_UNCOND("**: " << m_curRxProbe - m_preRxProbe);
+            m_preRxProbe = m_curRxProbe;
 
             // Update buffer
             m_bufferSize += m_chunkSize * 1000;
@@ -442,7 +455,15 @@ void DashClientApp::BBA(void)
 
 void DashClientApp::Proposed(void)
 {
-    // Propose idea code writing!!
+    m_nextBitrate = 7200;
+    if (m_probeTerm <15){
+        m_probeTerm *=2;
+    }else{
+        m_probeTerm = 1;
+        m_preRxProbe = 0;
+    }
+    Time tNext(Seconds(m_chunkSize * m_probeTerm));
+    Simulator::Schedule(tNext, &DashClientApp::SendRequest, this);
     
 }
 
@@ -456,16 +477,20 @@ uint32_t DashClientApp::GetIndexByBitrate(uint32_t bitrate)
     return -1;
 }
 
+//버퍼 크기가 최대 버퍼량을 초과하지 않았을 때, 클라이언트가, 서버에 메세지를 요청하는 부분. 
 void DashClientApp::SendRequest(void)
 {
+    // m_nextBitrate 다음 차례에 결정될 Rate값을 말하는 것.(으로 보임)
     if (m_nextBitrate == 0)
-        m_nextBitrate = m_bitrate_array[0];
+        m_nextBitrate = m_bitrate_array[0]; //0이면 초기값(0.7MB/s)
 
+    // byteReq라는 값에 넣는 것... 다음 데이터레이트를 청크 개수만큼 증가시킴(곱), 바이트값을 저장
     uint32_t bytesReq = (m_nextBitrate * m_chunkSize) / 8;
+    // 그 다음 패킷을 만들었다. bytesReq주소에 있는 내용물을 패킷에 담는데, 패킷 페이로드는 4바이트 크기임
     Ptr<Packet> packet = Create<Packet>((uint8_t *) &bytesReq, 4);
 
-    m_lastRequestedSize = bytesReq;
-    m_socket->Send(packet);
+    m_lastRequestedSize = bytesReq; //bytesReq값은 다시 m_lastRequestedSize값... 지난 요청사이즈값. 에 저장하는것임. 
+    m_socket->Send(packet); //그 패킷(들)을 소켓으로 보낸다. 
 
     if (m_prevBitrate != 0 && m_prevBitrate != m_nextBitrate) {
         m_numOfSwitching++;
@@ -563,13 +588,13 @@ int main(int argc, char *argv[])
     string algorithm;
 
     std::string animFile = "dash-animation.xml" ;  // Name of file for animation output
+    
     cout << "Input the adaptation algorithm : ";
     cin >> algorithm;
-
     LogComponentEnable("DashApplication", LOG_LEVEL_ALL);
 
     PointToPointHelper bottleNeck;
-    bottleNeck.SetDeviceAttribute("DataRate", StringValue("5Mbps"));
+    bottleNeck.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
     bottleNeck.SetChannelAttribute("Delay", StringValue("10ms"));
     bottleNeck.SetQueue("ns3::DropTailQueue", "Mode", StringValue ("QUEUE_MODE_BYTES"));
 
@@ -604,22 +629,31 @@ int main(int argc, char *argv[])
     // srcApp1.Stop(Seconds(800.0));
 
     // Scenario 2 (Drastic Bandwidth Decrease -> Increase)
-    OnOffHelper crossTrafficSrc1("ns3::UdpSocketFactory", InetSocketAddress (dB.GetRightIpv4Address(0), serverPort));
-    crossTrafficSrc1.SetAttribute("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=100]"));
-    crossTrafficSrc1.SetAttribute("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=100]"));
-    crossTrafficSrc1.SetAttribute("DataRate", DataRateValue (DataRate("2000kb/s")));
+    uint32_t dstPort = 1000;
+    Address dstAddress (InetSocketAddress (dB.GetLeftIpv4Address (0), dstPort));
+    PacketSinkHelper sinkHelper ("ns3::TcpSocketFactory", dstAddress);
+
+    OnOffHelper crossTrafficSrc1("ns3::TcpSocketFactory", dstAddress);
+    crossTrafficSrc1.SetAttribute("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.01]"));
+    crossTrafficSrc1.SetAttribute("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.01]"));
+    crossTrafficSrc1.SetAttribute("DataRate", DataRateValue (DataRate("3.6Mb/s")));
     crossTrafficSrc1.SetAttribute("PacketSize", UintegerValue (512));
-    ApplicationContainer srcApp1 = crossTrafficSrc1.Install(dB.GetLeft(0));
-    srcApp1.Start(Seconds(0.0));///////////////
-    srcApp1.Stop(Seconds(5.0));///////////////
-    OnOffHelper crossTrafficSrc2("ns3::UdpSocketFactory", InetSocketAddress (dB.GetRightIpv4Address(0), serverPort));
-    crossTrafficSrc2.SetAttribute("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=100]"));
-    crossTrafficSrc2.SetAttribute("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=100]"));
-    crossTrafficSrc2.SetAttribute("DataRate", DataRateValue (DataRate("2000kb/s")));
-    crossTrafficSrc2.SetAttribute("PacketSize", UintegerValue (512));
-    ApplicationContainer srcApp2 = crossTrafficSrc2.Install(dB.GetLeft(0));
-    srcApp2.Start(Seconds(0.0));///////////////
-    srcApp2.Stop(Seconds(5.0));///////////////
+    ApplicationContainer srcApp1 = crossTrafficSrc1.Install(dB.GetRight(0));
+
+    ApplicationContainer dstApp1;
+    dstApp1 = sinkHelper.Install(dB.GetLeft(0));
+    dstApp1.Start(Seconds(0.0));
+    dstApp1.Stop(Seconds(5.0));
+    srcApp1.Start(Seconds(0.0));
+    srcApp1.Stop(Seconds(5.0));
+    // OnOffHelper crossTrafficSrc2("ns3::UdpSocketFactory", InetSocketAddress (dB.GetRightIpv4Address(0), serverPort));
+    // crossTrafficSrc2.SetAttribute("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=100]"));
+    // crossTrafficSrc2.SetAttribute("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=100]"));
+    // crossTrafficSrc2.SetAttribute("DataRate", DataRateValue (DataRate("2000kb/s")));
+    // crossTrafficSrc2.SetAttribute("PacketSize", UintegerValue (512));
+    // ApplicationContainer srcApp2 = crossTrafficSrc2.Install(dB.GetLeft(0));
+    // srcApp2.Start(Seconds(0.0));
+    // srcApp2.Stop(Seconds(5.0));
 
     // Scenario 3 (Drastic Bandwidth Decrease -> Maintain)
     // OnOffHelper crossTrafficSrc1("ns3::UdpSocketFactory", InetSocketAddress (dB.GetRightIpv4Address(0), serverPort));
@@ -640,8 +674,7 @@ int main(int argc, char *argv[])
     serverApp1->SetStopTime(Seconds(10.0));
 
     // DASH client
-    Address serverAddress1(
-        InetSocketAddress(dB.GetLeftIpv4Address(1), serverPort));
+    Address serverAddress1(InetSocketAddress(dB.GetLeftIpv4Address(1), serverPort));
     Ptr<DashClientApp> clientApp1 = CreateObject<DashClientApp>();
     clientApp1->Setup(serverAddress1, 2, 512, algorithm);
     dB.GetRight(1)->AddApplication(clientApp1);
