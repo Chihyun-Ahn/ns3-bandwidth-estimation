@@ -24,8 +24,10 @@ Time m_cTime;
 Time m_dTime;
 uint32_t m_oneWayDelay;
 uint32_t m_srcGapSum = 0;
+uint32_t m_lastSrcGapSum = 0;
 uint32_t m_dstGapSum = 0;
 uint32_t m_srcGap;
+uint32_t m_srcGapNext;
 uint32_t m_step;
 uint32_t m_gB;
 bool m_isServerStop; //서버에서 트레인 이제 그만 보낼 시점
@@ -33,6 +35,7 @@ uint32_t m_incGapSum;
 float m_b_bw = 10.0; //보틀넥 링크 용량(Mbps)
 float m_c_bw;
 float m_a_bw;
+bool m_isServerSending = false;
 
 //================================================================
 // SERVER APPLICATION
@@ -124,20 +127,18 @@ void PathloadServerApp::Setup(Address address, Address addressForUDP, uint32_t p
     // 패킷 사이즈도 전달받는겨. 패킷 간격이 m_timePeriod
     m_packetSize = packetSize;
     // m_srcGap = 200; // (us)초기 200마이크로초 갭부터 시작 
-    m_trainSize = 256; // 패캣 트레인은 256개의 패킷으로 구성
+    m_trainSize = 100; // 패캣 트레인은 256개의 패킷으로 구성
     m_gB = 600; // gB값. 0.6ms (마이크로초)
     m_srcGap = m_gB / 2; // 초기의 갭값. 
+    m_srcGapNext = m_gB / 2;
     m_step = m_gB / 8; //스텝값. 
     m_isServerStop = false;
-    m_nextRoundTime = 10000; //트레인간 간격 10ms
-    
-    NS_LOG_UNCOND("PathloadServerApp :: Setup");
+    m_nextRoundTime = 500; //트레인간 간격 1000ms
 }
 
 // 서버앱 시작 메소드
 void PathloadServerApp::StartApplication()
 {
-    NS_LOG_UNCOND("PathloadServerApp :: StartApplication");
 
     // 연결 맺기 소켓은 Tcp로 만드는겨. 
     m_socket = Socket::CreateSocket(GetNode(), TcpSocketFactory::GetTypeId());
@@ -156,13 +157,13 @@ void PathloadServerApp::StopApplication()
     if (m_socket){m_socket->Close();}
     if (m_sendEvent.IsRunning()){Simulator::Cancel(m_sendEvent);}
 
-    NS_LOG_UNCOND("PathloadServerApp :: StopApplication");
+    // NS_LOG_UNCOND("PathloadServerApp :: StopApplication");
 }
 
 // 연결 요청이 들어오면, 콜백할 메소드
 bool PathloadServerApp::ConnectionCallback(Ptr<Socket> socket, const Address& adss)
 {
-    NS_LOG_UNCOND("PathloadServerApp :: ConnectionCallback");
+    // NS_LOG_UNCOND("PathloadServerApp :: ConnectionCallback");
     m_connected = true; //커넥션 맺었다. 저장. 
     return true;
 }
@@ -211,10 +212,12 @@ void PathloadServerApp::SendPacketsForUDP(void)
 {
     if(m_isServerStop){
         Simulator::Cancel(m_probing);
-        Simulator::Stop();
     }else{
         m_packetCountForUDP++; // 1개 보낼 때마다 몇 개 보냈는지, m_packetCountForUDP에 저장. 
         if(m_packetCountForUDP <= m_trainSize){
+            m_isServerSending = true;
+            if(m_packetCountForUDP == 1){ m_srcGapSum = 0;}
+
             uint32_t bytesSend = m_packetSize;
 
             Time curTime = Simulator::Now();
@@ -223,21 +226,25 @@ void PathloadServerApp::SendPacketsForUDP(void)
             m_socketForUDP->SendTo(packet, 0, adsForUDP);
             m_cTime = curTime;
 
-            NS_LOG_UNCOND("서버에서 보낸 패킷 개수: " << m_packetCountForUDP);
-            Simulator::ScheduleNow(&PathloadServerApp::SendPeriod, this);
+            // NS_LOG_UNCOND("서버에서 보낸 패킷 개수: " << m_packetCountForUDP);
+            Simulator::ScheduleNow(&PathloadServerApp::SendPeriod, this); // 호출했던 함수로 다시 돌아감. 
             if(m_packetCountForUDP > 1){
                 uint32_t m_gapNow = curTime.GetMicroSeconds() - m_lastPacketTime.GetMicroSeconds();
-                NS_LOG_UNCOND("소스 갭: " << m_gapNow);    
+                NS_LOG_UNCOND("서버에서 보낸 패킷 개수: " << m_packetCountForUDP << " 소스 갭: " << m_gapNow);
                 m_srcGapSum += m_gapNow;
             } 
             m_lastPacketTime = curTime;
-        }else if(m_packetCountForUDP == m_trainSize){
+        }else if(m_packetCountForUDP > m_trainSize){
+            m_isServerSending = false;
+            m_srcGap = m_srcGapNext;
             m_packetCountForUDP = 0;
             m_trainCount++;
-            NS_LOG_UNCOND("서버에서 다보냄.보낸 개수: " << m_packetCountForUDP << "m_srcGapSum: " << m_srcGapSum);
-            Simulator::Cancel(m_probing);
-            Time tNextProcess(MicroSeconds(m_nextRoundTime));
-            Simulator::Schedule(tNextProcess, &PathloadServerApp::SendPeriod, this);
+            m_lastSrcGapSum = m_srcGapSum;
+            NS_LOG_UNCOND(m_trainCount << "번째 트레인 서버에서 전송 완료.m_lastSrcGapSum: " << m_lastSrcGapSum);
+            // Simulator::Cancel(m_probing);
+            // Time tNextProcess(MilliSeconds(m_nextRoundTime));
+            // Simulator::Schedule(tNextProcess, &PathloadServerApp::SendPeriod, this);
+            Simulator::ScheduleNow(&PathloadServerApp::SendPeriod, this); // 호출했던 함수로 다시 돌아감. 
         }
     }
     
@@ -285,34 +292,9 @@ void PathloadServerApp::SendData(void)
 // 프로프 udp패킷을 시간간격 대로 보내는 부분. 
 void PathloadServerApp::SendPeriod(void)
 {
-    NS_LOG_UNCOND("PathloadServerApp :: SendPeriod");
+    // NS_LOG_UNCOND("PathloadServerApp :: SendPeriod");
     Time tNext(MicroSeconds(m_srcGap));
     m_probing = Simulator::Schedule(tNext, &PathloadServerApp::SendPacketsForUDP, this);
-    
-    // m_fleetCount++;
-
-    // m_packetCountForUDP = 0;
-    // Time tNextProcess(MicroSeconds(10000)); // 트레인간 간격은 10ms
-    // NS_LOG_UNCOND("fleetCount: " << m_fleetCount << "Now wait for(ms): " << tNextProcess);
-    // Simulator::Schedule(tNextProcess, &PathloadServerApp::SendPacketsForUDP, this);
-    
-    // if (m_timePeriod){
-    //     if (m_packetCountForUDP > 100){
-    //         m_packetCountForUDP = 0;
-    //         m_fleetCount++;
-    //         NS_LOG_UNCOND("PathloadServerApp :: SendPeriod :: Fleet Count :: " << m_fleetCount);
-    //         Simulator::Cancel(m_probing);
-    //         // Probing cancel during inter-stream duration, 90 ms
-    //         Time tNextProcess(MilliSeconds(90));
-    //         Simulator::Schedule(tNextProcess, &PathloadServerApp::SendPacketsForUDP, this);
-    //     }else {
-    //         Time tNext(MicroSeconds(m_timePeriod));
-    //         m_probing = Simulator::Schedule(tNext, &PathloadServerApp::SendPacketsForUDP, this);
-    //     }
-
-        // Time tNext(MicroSeconds(m_timePeriod));
-        // m_probing = Simulator::Schedule(tNext, &PathloadServerApp::SendPacketsForUDP, this);
-    // }
 }
 
 //================================================================
@@ -366,6 +348,7 @@ private:
     uint32_t m_packetCountForUDP;
     uint32_t m_trainSize;
     Time m_lastPacketTime;
+    uint32_t m_trainCount;
 
     Address adsForUDP;
     uint32_t m_oneWayDelay;
@@ -393,16 +376,17 @@ PathloadClientApp::~PathloadClientApp()
 // 클라이언트앱 셋업
 void PathloadClientApp::Setup(Address address, Address addressForUDP, uint32_t packetSize)
 {
-    NS_LOG_UNCOND("PathloadClientApp :: Setup");
+    // NS_LOG_UNCOND("PathloadClientApp :: Setup");
 
     m_peer = address;
     adsForUDP = addressForUDP;
 
     m_packetSize = packetSize;
 
-    m_trainSize = 256; //트레인 사이즈 256개
+    m_trainSize = 100; //트레인 사이즈 256개
     m_timePeriod = 200; // 패킷 간격 100마이크로초
     m_lastPacketTime = Simulator::Now(); 
+    m_trainCount = 0;
 
     // Calculate expected stream rate using number of packets, size of packets, and sending period of each packet (unit of rate is 'bps')
     m_rateOfStream = (double)(m_trainSize * m_sizeOfPackets * 8) / ((double)(m_timePeriod * m_trainSize) / pow(10, 6));
@@ -419,7 +403,7 @@ void PathloadClientApp::RxDrop(Ptr<const Packet> p)
 // 클라이언트앱 시작 메소드
 void PathloadClientApp::StartApplication(void)
 {
-    NS_LOG_UNCOND("PathloadClientApp :: StartApplication");
+    // NS_LOG_UNCOND("PathloadClientApp :: StartApplication");
 
     // UDP socket of Pathload client
     m_socketForUDP = Socket::CreateSocket(GetNode(), UdpSocketFactory::GetTypeId());
@@ -449,7 +433,7 @@ void PathloadClientApp::RequestNextPacket(void)
 
 void PathloadClientApp::RxCallbackForUDP(Ptr<Socket> socket)
 {
-    NS_LOG_UNCOND("PathloadClientApp :: RxCallbackForUDP");
+    // NS_LOG_UNCOND("PathloadClientApp :: RxCallbackForUDP");
 
     Ptr<Packet> packet;
 
@@ -461,32 +445,36 @@ void PathloadClientApp::RxCallbackForUDP(Ptr<Socket> socket)
             break;
         }
         uint32_t m_recvPcktSize = packet->GetSize();
-        m_packetCountForUDP++;
- 
-        NS_LOG_UNCOND("Packet Count: " << m_packetCountForUDP << "Received packet Size: " << m_recvPcktSize);
-        Time curTime = Simulator::Now();
+        m_packetCountForUDP++; // 카운트 1 증가. (초기값 = 0)
+        if(m_packetCountForUDP == 1){m_dstGapSum = 0;} // 첫 패킷일 경우, 지난 목적지 갭 합산값 초기화
+        NS_LOG_UNCOND("클라이언트에 받은 패킷 개수: " << m_packetCountForUDP << " 패킷 사이즈: " << m_recvPcktSize);
+        Time curTime = Simulator::Now(); //받은 시간값 저장
+        // 2번째 패킷부터, 목적지 갭 계산 후 합산값에 누적. 
         if(m_packetCountForUDP > 1 && m_packetCountForUDP <= m_trainSize){
             uint32_t m_dstGap = curTime.GetMicroSeconds() - m_lastPacketTime.GetMicroSeconds();
-            NS_LOG_UNCOND("목적지 갭: " << m_dstGap);
+            NS_LOG_UNCOND("클라이언트: 현재 패킷의 목적지 갭: " << m_dstGap);
             m_dstGapSum += m_dstGap;
         }
         m_lastPacketTime = curTime;
+        // 100번째 패킷이 왓을 경우, 
         if(m_packetCountForUDP == m_trainSize){
-            m_packetCountForUDP = 0;
-            m_incGapSum = m_dstGapSum - m_srcGapSum;
-            NS_LOG_UNCOND("srcGapSum: " << m_srcGapSum << "dstGapSum: " << m_dstGapSum);
+            m_packetCountForUDP = 0;  // 패킷 카운트 초기화
+            m_trainCount++; // 트레인 카운트
+            m_incGapSum = m_dstGapSum - m_lastSrcGapSum; 
+            NS_LOG_UNCOND("m_lastSrcGapSum: " << m_lastSrcGapSum << " dstGapSum: " << m_dstGapSum);
             NS_LOG_UNCOND("Increased Gap Sum: " << m_incGapSum);
-            m_equalNorm = (float) m_incGapSum / m_dstGapSum;
+            m_equalNorm = ((float) m_incGapSum) / ((float)m_dstGapSum);
             NS_LOG_UNCOND("m_equalNorm: " << m_equalNorm);
             if(m_equalNorm < 0.1){
                 NS_LOG_UNCOND("m_b_bw: " << m_b_bw);
                 m_c_bw = m_b_bw * m_equalNorm; //경쟁 트래픽 스루풋
                 m_a_bw = m_b_bw - m_c_bw; //가용대역폭
                 m_isServerStop = true;
-                NS_LOG_UNCOND("경쟁 트래픽(Mbps): " << m_c_bw << "가용대역폭(Mbps): " << m_a_bw);
+                NS_LOG_UNCOND("보낸 트레인 개수: " << m_trainCount <<"경쟁 트래픽(Mbps): " << m_c_bw << "가용대역폭(Mbps): " << m_a_bw);
                 Simulator::Stop();
             }else{
-                m_srcGap += m_step; 
+                m_srcGapNext += m_step; 
+                NS_LOG_UNCOND("클라이언트에서: 소스갭 다음으로 변경: " << m_srcGapNext);
             }
         }       
     }
@@ -534,6 +522,8 @@ void PathloadClientApp::StopApplication(void)
 int main(int argc, char *argv[])
 {
 
+    float m_stopTime = 300.0;
+
     std::string animFile = "dash-animation.xml" ;  // Name of file for animation output
     LogComponentEnable("PathloadApplication", LOG_LEVEL_ALL);
 
@@ -564,16 +554,16 @@ int main(int argc, char *argv[])
 
     // 경쟁 트래픽
     OnOffHelper onoff1("ns3::UdpSocketFactory", InetSocketAddress(dB.GetRightIpv4Address(0), port));
-    onoff1.SetConstantRate(DataRate("3.6Mbps"), 1500);
+    onoff1.SetConstantRate(DataRate("4.0Mbps"), 2000);
     ApplicationContainer cbrApp1 = onoff1.Install(dB.GetLeft(0));
 
     cbrApp1.Start(Seconds(0.02));
-    cbrApp1.Stop(Seconds(3.0));
+    cbrApp1.Stop(Seconds(m_stopTime));
     
     PacketSinkHelper cbrSink1("ns3::UdpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
     cbrApp1 = cbrSink1.Install(dB.GetRight(0));
     cbrApp1.Start(Seconds(0.0));
-    cbrApp1.Stop(Seconds(3.0));
+    cbrApp1.Stop(Seconds(m_stopTime));
 
 
 
@@ -587,14 +577,14 @@ int main(int argc, char *argv[])
     serverApp1->Setup(TCPBindAddress, UDPServerAddress, 750); //패킷 사이즈는 750
     dB.GetLeft(1)->AddApplication(serverApp1);
     serverApp1->SetStartTime(Seconds(0.0));
-    serverApp1->SetStopTime(Seconds(3.0));
+    serverApp1->SetStopTime(Seconds(m_stopTime));
 
     // 패스로드 클라이언트
     Ptr<PathloadClientApp> clientApp1 = CreateObject<PathloadClientApp>();
     clientApp1->Setup(TCPServerAddress, UDPBindAddress, 750);  //패킷 사이즈는 750
     dB.GetRight(1)->AddApplication(clientApp1);
     clientApp1->SetStartTime(Seconds(0.0));
-    clientApp1->SetStopTime(Seconds(3.0));
+    clientApp1->SetStopTime(Seconds(m_stopTime));
 
     // Set the bounding box for animation
     dB.BoundingBox (1, 1, 100, 100);
@@ -602,11 +592,11 @@ int main(int argc, char *argv[])
     // Create the animation object and configure for specified output
     AnimationInterface anim (animFile);
     anim.EnablePacketMetadata (); // Optional
-    anim.EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (3)); // Optional 
+    anim.EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (m_stopTime)); // Optional 
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
-    Simulator::Stop(Seconds(3.0));
+    Simulator::Stop(Seconds(m_stopTime));
 
     Simulator::Run();
     std::cout << "Animation Trace file created:" << animFile.c_str ()<< std::endl;
