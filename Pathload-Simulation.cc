@@ -127,7 +127,7 @@ void PathloadServerApp::Setup(Address address, Address addressForUDP, uint32_t p
     // 패킷 사이즈도 전달받는겨. 패킷 간격이 m_timePeriod
     m_packetSize = packetSize;
     // m_srcGap = 200; // (us)초기 200마이크로초 갭부터 시작 
-    m_trainSize = 100; // 패캣 트레인은 256개의 패킷으로 구성
+    m_trainSize = 50; // 패캣 트레인은 256개의 패킷으로 구성
     m_gB = 600; // gB값. 0.6ms (마이크로초)
     m_srcGap = m_gB / 2; // 초기의 갭값. 
     m_srcGapNext = m_gB / 2;
@@ -214,6 +214,7 @@ void PathloadServerApp::SendPacketsForUDP(void)
         Simulator::Cancel(m_probing);
     }else{
         m_packetCountForUDP++; // 1개 보낼 때마다 몇 개 보냈는지, m_packetCountForUDP에 저장. 
+        m_srcGapSum = m_srcGap * (m_trainSize -1); // 소스갭 계산
         if(m_packetCountForUDP <= m_trainSize){
             m_isServerSending = true;
             if(m_packetCountForUDP == 1){ m_srcGapSum = 0;}
@@ -228,11 +229,11 @@ void PathloadServerApp::SendPacketsForUDP(void)
 
             // NS_LOG_UNCOND("서버에서 보낸 패킷 개수: " << m_packetCountForUDP);
             Simulator::ScheduleNow(&PathloadServerApp::SendPeriod, this); // 호출했던 함수로 다시 돌아감. 
-            if(m_packetCountForUDP > 1){
-                uint32_t m_gapNow = curTime.GetMicroSeconds() - m_lastPacketTime.GetMicroSeconds();
-                NS_LOG_UNCOND("서버에서 보낸 패킷 개수: " << m_packetCountForUDP << " 소스 갭: " << m_gapNow);
-                m_srcGapSum += m_gapNow;
-            } 
+            // if(m_packetCountForUDP > 1){
+            //     uint32_t m_gapNow = curTime.GetMicroSeconds() - m_lastPacketTime.GetMicroSeconds();
+                NS_LOG_UNCOND("서버에서 보낸 패킷 개수: " << m_packetCountForUDP << " 소스갭: " << m_srcGap);
+                // m_srcGapSum += m_gapNow;
+            // } 
             m_lastPacketTime = curTime;
         }else if(m_packetCountForUDP > m_trainSize){
             m_isServerSending = false;
@@ -240,7 +241,7 @@ void PathloadServerApp::SendPacketsForUDP(void)
             m_packetCountForUDP = 0;
             m_trainCount++;
             m_lastSrcGapSum = m_srcGapSum;
-            NS_LOG_UNCOND(m_trainCount << "번째 트레인 서버에서 전송 완료.m_lastSrcGapSum: " << m_lastSrcGapSum);
+            NS_LOG_UNCOND(m_trainCount << "번째 트레인 서버에서 전송 완료. m_lastSrcGapSum: " << m_lastSrcGapSum);
             // Simulator::Cancel(m_probing);
             // Time tNextProcess(MilliSeconds(m_nextRoundTime));
             // Simulator::Schedule(tNextProcess, &PathloadServerApp::SendPeriod, this);
@@ -354,7 +355,7 @@ private:
     uint32_t m_oneWayDelay;
     float m_equalNorm;
     // uint32_t m_c_bw;
-    uint32_t m_a_bw;
+    float m_a_bw;
 
 };
 
@@ -383,7 +384,7 @@ void PathloadClientApp::Setup(Address address, Address addressForUDP, uint32_t p
 
     m_packetSize = packetSize;
 
-    m_trainSize = 100; //트레인 사이즈 256개
+    m_trainSize = 50; //트레인 사이즈 256개
     m_timePeriod = 200; // 패킷 간격 100마이크로초
     m_lastPacketTime = Simulator::Now(); 
     m_trainCount = 0;
@@ -465,7 +466,8 @@ void PathloadClientApp::RxCallbackForUDP(Ptr<Socket> socket)
             NS_LOG_UNCOND("Increased Gap Sum: " << m_incGapSum);
             m_equalNorm = ((float) m_incGapSum) / ((float)m_dstGapSum);
             NS_LOG_UNCOND("m_equalNorm: " << m_equalNorm);
-            if(m_equalNorm < 0.1){
+
+            if(m_equalNorm < 0.1){ //소스갭합과 목적지갭합이 같을 경우
                 NS_LOG_UNCOND("m_b_bw: " << m_b_bw);
                 m_c_bw = m_b_bw * m_equalNorm; //경쟁 트래픽 스루풋
                 m_a_bw = m_b_bw - m_c_bw; //가용대역폭
@@ -554,7 +556,7 @@ int main(int argc, char *argv[])
 
     // 경쟁 트래픽
     OnOffHelper onoff1("ns3::UdpSocketFactory", InetSocketAddress(dB.GetRightIpv4Address(0), port));
-    onoff1.SetConstantRate(DataRate("4.0Mbps"), 2000);
+    onoff1.SetConstantRate(DataRate("6.0Mbps"), 3000);
     ApplicationContainer cbrApp1 = onoff1.Install(dB.GetLeft(0));
 
     cbrApp1.Start(Seconds(0.02));
@@ -564,8 +566,6 @@ int main(int argc, char *argv[])
     cbrApp1 = cbrSink1.Install(dB.GetRight(0));
     cbrApp1.Start(Seconds(0.0));
     cbrApp1.Stop(Seconds(m_stopTime));
-
-
 
     Address TCPBindAddress(InetSocketAddress(Ipv4Address::GetAny(), serverPortTCP));
     Address TCPServerAddress(InetSocketAddress(dB.GetLeftIpv4Address(1), serverPortTCP));
