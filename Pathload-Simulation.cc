@@ -36,6 +36,12 @@ float m_b_bw = 10.0; //보틀넥 링크 용량(Mbps)
 float m_c_bw;
 float m_a_bw;
 bool m_isServerSending = false;
+Time m_startTime;
+Time m_finishTime;
+vector<uint32_t> m_depatureTimeArray;
+vector<uint32_t> m_arrivalTimeArray;
+vector<uint32_t> m_oneWayDelayArray;
+uint32_t m_probePcktSize = 700;
 
 //================================================================
 // SERVER APPLICATION
@@ -127,13 +133,14 @@ void PathloadServerApp::Setup(Address address, Address addressForUDP, uint32_t p
     // 패킷 사이즈도 전달받는겨. 패킷 간격이 m_timePeriod
     m_packetSize = packetSize;
     // m_srcGap = 200; // (us)초기 200마이크로초 갭부터 시작 
-    m_trainSize = 50; // 패캣 트레인은 256개의 패킷으로 구성
+    m_trainSize = 60; // 패캣 트레인은 256개의 패킷으로 구성
     m_gB = 600; // gB값. 0.6ms (마이크로초)
     m_srcGap = m_gB / 2; // 초기의 갭값. 
     m_srcGapNext = m_gB / 2;
     m_step = m_gB / 8; //스텝값. 
     m_isServerStop = false;
     m_nextRoundTime = 500; //트레인간 간격 1000ms
+    m_startTime = Simulator::Now();
 }
 
 // 서버앱 시작 메소드
@@ -222,6 +229,7 @@ void PathloadServerApp::SendPacketsForUDP(void)
             uint32_t bytesSend = m_packetSize;
 
             Time curTime = Simulator::Now();
+            m_depatureTimeArray.push_back(curTime.GetMilliSeconds());
             //패킷을 지정된 패킷사이즈(750바이트)로 만들어서, Udp 주소로 보낸다. 
             Ptr<Packet> packet = Create<Packet>((uint8_t*)&bytesSend, bytesSend);
             m_socketForUDP->SendTo(packet, 0, adsForUDP);
@@ -384,7 +392,7 @@ void PathloadClientApp::Setup(Address address, Address addressForUDP, uint32_t p
 
     m_packetSize = packetSize;
 
-    m_trainSize = 50; //트레인 사이즈 256개
+    m_trainSize = 60; //트레인 사이즈 256개
     m_timePeriod = 200; // 패킷 간격 100마이크로초
     m_lastPacketTime = Simulator::Now(); 
     m_trainCount = 0;
@@ -457,22 +465,33 @@ void PathloadClientApp::RxCallbackForUDP(Ptr<Socket> socket)
             m_dstGapSum += m_dstGap;
         }
         m_lastPacketTime = curTime;
+        m_arrivalTimeArray.push_back(m_lastPacketTime.GetMilliSeconds());
+        m_oneWayDelayArray.push_back(m_arrivalTimeArray[m_packetCountForUDP - 1] - m_depatureTimeArray[m_packetCountForUDP - 1]);
+        NS_LOG_UNCOND(m_packetCountForUDP << "번째 패킷의 OnewayDelay: " << m_oneWayDelayArray[m_packetCountForUDP-1]);
         // 100번째 패킷이 왓을 경우, 
         if(m_packetCountForUDP == m_trainSize){
             m_packetCountForUDP = 0;  // 패킷 카운트 초기화
             m_trainCount++; // 트레인 카운트
-            m_incGapSum = m_dstGapSum - m_lastSrcGapSum; 
-            NS_LOG_UNCOND("m_lastSrcGapSum: " << m_lastSrcGapSum << " dstGapSum: " << m_dstGapSum);
+            m_incGapSum = m_dstGapSum - m_srcGapSum; 
+            NS_LOG_UNCOND("srcGapSum: " << m_srcGapSum << " dstGapSum: " << m_dstGapSum);
             NS_LOG_UNCOND("Increased Gap Sum: " << m_incGapSum);
             m_equalNorm = ((float) m_incGapSum) / ((float)m_dstGapSum);
-            NS_LOG_UNCOND("m_equalNorm: " << m_equalNorm);
+            // NS_LOG_UNCOND("m_equalNorm: " << m_equalNorm);
 
-            if(m_equalNorm < 0.1){ //소스갭합과 목적지갭합이 같을 경우
+            if(m_equalNorm < 0.2){ //소스갭합과 목적지갭합이 같을 경우
                 NS_LOG_UNCOND("m_b_bw: " << m_b_bw);
                 m_c_bw = m_b_bw * m_equalNorm; //경쟁 트래픽 스루풋
                 m_a_bw = m_b_bw - m_c_bw; //가용대역폭
                 m_isServerStop = true;
-                NS_LOG_UNCOND("보낸 트레인 개수: " << m_trainCount <<"경쟁 트래픽(Mbps): " << m_c_bw << "가용대역폭(Mbps): " << m_a_bw);
+                m_finishTime = Simulator::Now();
+                uint32_t m_elapsedTime = m_finishTime.GetMilliSeconds() - m_startTime.GetMilliSeconds();
+                float m_ptr = ((float)m_probePcktSize * 8 * (m_trainSize - 1))/ m_dstGapSum;
+                NS_LOG_UNCOND("Train count(trains): " << m_trainCount << "수렴 시간(ms): " << m_elapsedTime);
+                NS_LOG_UNCOND("===============================IGI================================");
+                NS_LOG_UNCOND("경쟁 트래픽(Mbps): " << m_c_bw << "가용대역폭(Mbps): " << m_a_bw);
+                NS_LOG_UNCOND("===============================PTR================================");
+                NS_LOG_UNCOND("경쟁 트래픽(Mbps): " << (m_b_bw - m_ptr) << "가용대역폭(Mbps): " << m_ptr); 
+                NS_LOG_UNCOND("==================================================================");
                 Simulator::Stop();
             }else{
                 m_srcGapNext += m_step; 
@@ -531,7 +550,7 @@ int main(int argc, char *argv[])
 
     PointToPointHelper bottleNeck;
     bottleNeck.SetDeviceAttribute("DataRate", StringValue("10Mbps")); //주의: 맨 위에 전역 변수 m_b_bw값도 넣어주기
-    bottleNeck.SetChannelAttribute("Delay", StringValue("5ms"));
+    bottleNeck.SetChannelAttribute("Delay", StringValue("2ms"));
     bottleNeck.SetQueue("ns3::DropTailQueue", "Mode", StringValue("QUEUE_MODE_PACKETS"));
 
     PointToPointHelper pointToPointLeaf;
@@ -556,7 +575,7 @@ int main(int argc, char *argv[])
 
     // 경쟁 트래픽
     OnOffHelper onoff1("ns3::UdpSocketFactory", InetSocketAddress(dB.GetRightIpv4Address(0), port));
-    onoff1.SetConstantRate(DataRate("6.0Mbps"), 3000);
+    onoff1.SetConstantRate(DataRate("7Mbps"), 1400);
     ApplicationContainer cbrApp1 = onoff1.Install(dB.GetLeft(0));
 
     cbrApp1.Start(Seconds(0.02));
@@ -574,14 +593,14 @@ int main(int argc, char *argv[])
 
     // 패스로드 서버
     Ptr<PathloadServerApp> serverApp1 = CreateObject<PathloadServerApp>();
-    serverApp1->Setup(TCPBindAddress, UDPServerAddress, 750); //패킷 사이즈는 750
+    serverApp1->Setup(TCPBindAddress, UDPServerAddress, m_probePcktSize); //패킷 사이즈는 700. 전역변수에 있음. 
     dB.GetLeft(1)->AddApplication(serverApp1);
     serverApp1->SetStartTime(Seconds(0.0));
     serverApp1->SetStopTime(Seconds(m_stopTime));
 
     // 패스로드 클라이언트
     Ptr<PathloadClientApp> clientApp1 = CreateObject<PathloadClientApp>();
-    clientApp1->Setup(TCPServerAddress, UDPBindAddress, 750);  //패킷 사이즈는 750
+    clientApp1->Setup(TCPServerAddress, UDPBindAddress, m_probePcktSize);  //패킷 사이즈는 700
     dB.GetRight(1)->AddApplication(clientApp1);
     clientApp1->SetStartTime(Seconds(0.0));
     clientApp1->SetStopTime(Seconds(m_stopTime));
